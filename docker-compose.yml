@@ -1,0 +1,11 @@
+services:
+  server:
+    build: .
+    volumes:
+      - ./db.sqlite:/app/db.sqlite
+    environment:
+      - SESSION_SECRET=super-secret-key
+      - DB_PATH=/app/db.sqlite
+      - READABILITY_PATH=/app/readability
+    ports:
+      - "8080:8080"

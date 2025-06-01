@@ -1,0 +1,16 @@
+{
+  "name": "readability",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/jsdom": "^21.1.7"
+  },
+  "peerDependencies": {
+    "typescript": "^5",
+    "jsdom": "^26.1.0"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "tslog": "^4.9.3"
+  }
+}

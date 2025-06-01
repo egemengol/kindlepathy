@@ -1,0 +1,30 @@
+{{define "library-item"}}
+<div class="page library-item" id="page-{{.ID}}">
+  <label class="page-label">
+    <input
+      type="radio"
+      name="active_page"
+      value="{{.ID}}"
+      {{if
+      .IsActive}}checked{{end}}
+      hx-patch="/library/{{.ID}}"
+      hx-trigger="change"
+      id="radio-{{.ID}}"
+    >
+    <span class="custom-radio"></span>
+    <span class="title">{{.Title}}</span>
+  </label>
+  <div class="page-actions">
+    <div class="url-actions" data-url="{{.URL}}">
+      <img src="/static/link.svg" class="chain-icon" alt="URL options">
+      <div class="url-options">
+        <button class="copy-btn">Copy URL</button>
+        <a href="{{.URL}}" target="_blank" class="open-link">Open in new tab</a>
+      </div>
+    </div>
+    <button class="delete-btn" hx-delete="/library/{{.ID}}" hx-target="#page-{{.ID}}" hx-swap="delete">
+      <img src="/static/trash.svg" class="trash-icon" alt="Delete">
+    </button>
+  </div>
+</div>
+{{end}}
