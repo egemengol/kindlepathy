@@ -27,11 +27,23 @@ func main() {
 	readabilityPath := os.Getenv("READABILITY_PATH")
 	sessionSecret := []byte(os.Getenv("SESSION_SECRET"))
 	dbPath := os.Getenv("DB_PATH")
+	port := os.Getenv("PORT")
+	if port == "" { // Default port if not set
+		port = "8080"
+	}
+	// Parse port as an integer
+	portInt := 0
+	_, err := fmt.Sscanf(port, "%d", &portInt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid port number: %s\n", port)
+		os.Exit(1)
+	}
 
 	config := &Config{
 		ReadabilityPath: readabilityPath,
 		SessionSecret:   sessionSecret,
 		DBPath:          dbPath,
+		Port:            portInt, // Use the port variable
 	}
 
 	if err := run(ctx, os.Stdout, config); err != nil {
@@ -44,6 +56,7 @@ type Config struct {
 	ReadabilityPath string
 	SessionSecret   []byte
 	DBPath          string
+	Port            int
 }
 
 func run(ctx context.Context, w io.Writer, config *Config) error {
@@ -108,8 +121,8 @@ func run(ctx context.Context, w io.Writer, config *Config) error {
 	go func() {
 		// logger.Info("Starting HTTPS server on :8080")
 		// if err := http.ListenAndServeTLS(":8080", certFile, keyFile, srv); err != nil {
-		logger.Info("Starting HTTP server on :8080")
-		if err := http.ListenAndServe(":8080", srv); err != nil {
+		logger.Info("Starting HTTP server on", "port", config.Port)
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", config.Port), srv); err != nil {
 			errChan <- fmt.Errorf("server failed: %w", err)
 		}
 	}()

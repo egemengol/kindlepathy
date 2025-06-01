@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Kindlepathy Extractor",
+  "version": "1.0",
+  "description": "Extracts content using Readability.js and logs the title.",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_popup": "index.html"
+  },
+  "host_permissions": ["http://localhost:8080/*", "https://kindlepathy.com/*"],
+  "web_accessible_resources": [
+    {
+      "resources": ["Readability.js", "DOMPurify.js", "alpine.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

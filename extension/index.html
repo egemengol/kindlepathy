@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Readability Extractor</title>
+    <style>
+      body {
+        width: 200px;
+        padding: 10px;
+      }
+      button {
+        width: 100%;
+        padding: 10px;
+        font-size: 16px;
+        margin-bottom: 10px;
+      }
+      .disabled {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+      #errorMessage {
+        color: #300;
+        display: none; /* Initially hidden */
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <!-- Login Button (Unauthenticated) -->
+      <div id="loginSection" style="display: none;">
+        <button id="loginButton">Login</button>
+      </div>
+      <!-- Authenticated State -->
+      <div id="authenticatedSection" style="display: none;">
+        <!-- Submit Button -->
+        <button id="submitButton" class="disabled">Extracting...</button>
+        <!-- Library Button -->
+        <button id="libraryButton">Library</button>
+      </div>
+      <!-- Error Message (Moved outside authenticatedSection) -->
+      <p id="errorMessage"></p>
+    </div>
+    <script src="content.js"></script>
+  </body>
+</html>
