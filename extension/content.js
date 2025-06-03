@@ -168,7 +168,6 @@ async function init() {
         try {
           await sendArticleToServer(article);
           errorMessage.style.display = "none";
-          alert("Article submitted successfully!");
         } catch (err) {
           errorMessage.textContent = "Failed to submit article.";
           errorMessage.style.display = "block";

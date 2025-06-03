@@ -7,11 +7,23 @@
   "action": {
     "default_popup": "index.html"
   },
+  "icons": {
+    "16": "icon-16.png",
+    "32": "icon-32.png",
+    "128": "icon-128.png",
+    "256": "icon-256.png",
+    "512": "icon-512.png"
+  },
   "host_permissions": ["http://localhost:8080/*", "https://kindlepathy.com/*"],
   "web_accessible_resources": [
     {
       "resources": ["Readability.js", "DOMPurify.js", "alpine.js"],
       "matches": ["<all_urls>"]
     }
-  ]
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "kindlepathy@kindlepathy.com"
+    }
+  }
 }

@@ -355,6 +355,10 @@ func addRoutes(mux *http.ServeMux, logger *slog.Logger, readability *readability
 	mux.Handle("POST /signup", handleSignupPost(logger, db))
 	mux.Handle("/logout", handleLogout(sessionStore))
 
+	mux.HandleFunc("/privacy", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join("web", "privacy.html"))
+	})
+
 	authMiddleware := newAuthMiddleware(logger, db, sessionStore)
 
 	mux.Handle("GET /read", authMiddleware(handleRead(logger, db, sessionStore)))

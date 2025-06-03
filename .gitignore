@@ -4,3 +4,4 @@ scratch
 files
 db.sqlite
 mount
+**/.DS_Store
