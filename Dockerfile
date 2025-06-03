@@ -31,6 +31,8 @@ COPY --from=go_builder /app/out ./server
 COPY migrations ./migrations
 COPY web ./web
 
+ENV READABILITY_PATH=/app/readability
+
 RUN chmod +x ./readability ./server
 # ENTRYPOINT ["ls", "-al"]
 ENTRYPOINT ["./server"]

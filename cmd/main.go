@@ -71,7 +71,7 @@ func run(ctx context.Context, w io.Writer, config *Config) error {
 	loggerReadability := log.Default()
 
 	// Run database migrations
-	logger.Info("Running database migrations...")
+	logger.Info("Running database migrations...", "dbPath", config.DBPath)
 	m, err := migrate.New(
 		"file://migrations",
 		fmt.Sprintf("sqlite://%s", config.DBPath),

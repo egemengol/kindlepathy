@@ -57,11 +57,6 @@ func NewReadabilityClient(
 	}
 
 	udsPath := filepath.Join(tempDir, fmt.Sprintf("readability-client-%s.sock", uid))
-	f, err := os.OpenFile(udsPath, os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create socket file %s: %w", udsPath, err)
-	}
-	f.Close()
 	os.Remove(udsPath)
 
 	cmd := exec.Command(serverBinaryPath, "--uds", udsPath)

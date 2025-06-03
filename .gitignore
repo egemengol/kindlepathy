@@ -3,3 +3,4 @@ scratch
 .envrc
 files
 db.sqlite
+mount
