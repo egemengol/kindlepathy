@@ -75,6 +75,14 @@ func addRoutes(mux *http.ServeMux, c *core.Core, logger *slog.Logger, queries *d
 	mux.Handle("GET /read", authMiddleware(handleReadActive(c, auth, logger)))
 	mux.Handle("POST /read/{id}", authMiddleware(handleReadNav(c, auth, logger)))
 	mux.Handle("POST /read", authMiddleware(handleReadNavActive(c, auth, logger)))
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if auth.IsAuthenticated(r) {
+			http.Redirect(w, r, "/library", http.StatusSeeOther)
+			return
+		}
+		http.ServeFile(w, r, filepath.Join("web", "index.html"))
+	})
 }
 
 func handleReadActive(c *core.Core, auth *AuthService, logger *slog.Logger) http.Handler {
@@ -391,7 +399,7 @@ func handleLogout(sessionStore *sessions.CookieStore) http.Handler {
 		}
 
 		// Redirect to login page
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 }
 

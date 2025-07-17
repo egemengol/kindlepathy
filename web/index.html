@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kindlepathy - Read Web Articles and Novels on your Kindle</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/icon-16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
+    <link rel="icon" type="image/png" sizes="128x128" href="/static/icon-128.png">
+    <link rel="icon" type="image/png" sizes="256x256" href="/static/icon-256.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">
+    <style>
+      /* Page-specific styles for the landing page */
+      .landing-section {
+        text-align: center;
+        padding: 3rem 1rem;
+        border-bottom: 1px solid #e0e0e0;
+      }
+
+      .landing-section:last-of-type {
+        border-bottom: none;
+      }
+
+      .hero h1 {
+        font-size: 2.5rem;
+        color: #333;
+        margin-bottom: 1rem;
+        line-height: 1.2;
+      }
+
+      .hero p {
+        font-size: 1.1rem;
+        color: #555;
+        max-width: 650px;
+        margin: 0 auto 2rem auto;
+        line-height: 1.6;
+      }
+
+      .hero-image {
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2.5rem;
+      }
+
+      .cta-button {
+        display: inline-block;
+        padding: 1rem 2.5rem;
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #fff;
+        background-color: #333;
+        border-radius: 5px;
+        text-decoration: none;
+        transition: background-color 0.2s ease;
+      }
+
+      .cta-button:hover {
+        background-color: #111;
+      }
+
+      .header-signup-button {
+        background-color: #333;
+        color: #fff;
+        border: 1px solid #333;
+      }
+      .header-signup-button:hover {
+        background-color: #111;
+        color: #fff;
+      }
+
+      .section-title {
+        font-size: 2rem;
+        margin-bottom: 2.5rem;
+        color: #333;
+      }
+
+      .features-grid {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+        flex-wrap: wrap;
+      }
+
+      .feature-item {
+        flex: 1;
+        min-width: 220px;
+        max-width: 280px;
+        text-align: left;
+        padding: 1.5rem;
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      }
+
+      .feature-item h3 {
+        font-size: 1.25rem;
+        margin-top: 0;
+        color: #333;
+      }
+
+      .feature-item p {
+        font-size: 0.95rem;
+        color: #666;
+        line-height: 1.5;
+      }
+
+      .how-it-works-steps {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+        flex-wrap: wrap;
+      }
+
+      .step {
+        flex: 1;
+        max-width: 250px;
+      }
+
+      .step .step-number {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #333;
+        border: 2px solid #ccc;
+        width: 40px;
+        height: 40px;
+        line-height: 40px;
+        border-radius: 50%;
+        margin: 0 auto 1rem auto;
+        background-color: #fff;
+      }
+
+      .step p {
+        font-size: 1rem;
+        color: #555;
+        line-height: 1.5;
+      }
+
+      .site-footer {
+        text-align: center;
+        padding: 2rem 1rem;
+        font-size: 0.9rem;
+        color: #777;
+      }
+      .site-footer a {
+        color: #555;
+        text-decoration: underline;
+      }
+
+      @media (max-width: 768px) {
+        .hero h1 {
+          font-size: 2rem;
+        }
+        .section-title {
+          font-size: 1.8rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="header-content">
+        <h1>Kindlepathy</h1>
+        <div class="user-info">
+          <a href="/login" class="header-link">Log In</a>
+          <a href="/signup" class="header-link header-signup-button">Sign Up</a>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="landing-section hero">
+        <h1>Read Web Articles and Novels on Your Kindle, Perfectly Formatted.</h1>
+        <p>Kindlepathy turns cluttered web pages into a clean, book-like experience for your Kindle's browser. Just add a link on your phone or PC, and it's ready to read on your device.</p>
+        <img src="/static/kindlepathy-screens.png" alt="Kindlepathy on a phone and a Kindle" class="hero-image">
+        <a href="/signup" class="cta-button">Sign Up for Free</a>
+      </section>
+      <section class="landing-section features">
+        <h2 class="section-title">Why You'll Love It</h2>
+        <div class="features-grid">
+          <div class="feature-item">
+            <h3>Focus on Readability</h3>
+            <p>Enjoy a distraction-free reading experience. We strip away ads, pop-ups, and sidebars, so you can focus on the content.</p>
+          </div>
+          <div class="feature-item">
+            <h3>Built for Series</h3>
+            <p>Perfect for web novels and manga. Kindlepathy detects chaptered content, letting you navigate between parts seamlessly.</p>
+          </div>
+          <div class="feature-item">
+            <h3>Always in Sync</h3>
+            <p>Your Kindle is always on the right page. Use your phone or computer to manage your library, and your Kindle is instantly updated.</p>
+          </div>
+        </div>
+      </section>
+      <section class="landing-section how-it-works">
+        <h2 class="section-title">How It Works in 3 Simple Steps</h2>
+        <div class="how-it-works-steps">
+          <div class="step">
+            <div class="step-number">1</div>
+            <p><strong>Sign up</strong>
+              for a free account on your phone or computer.</p>
+          </div>
+          <div class="step">
+            <div class="step-number">2</div>
+            <p><strong>Add an article</strong>
+              or novel URL to your personal library.</p>
+          </div>
+          <div class="step">
+            <div class="step-number">3</div>
+            <p><strong>Open a single page</strong>
+              on your Kindle's browser to read.</p>
+          </div>
+        </div>
+      </section>
+      <section class="landing-section final-cta">
+        <h2 class="section-title">Ready to Upgrade Your Kindle Experience?</h2>
+        <a href="/signup" class="cta-button">Get Started Now</a>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <p>A project by Egemengol.
+        <a href="https://egemengol.com/blog/kindlepathy/" target="_blank">Read more about it here.</a></p>
+    </footer>
+  </body>
+</html>

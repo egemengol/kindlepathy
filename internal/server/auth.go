@@ -84,3 +84,16 @@ func (a *AuthService) HandleAuthError(w http.ResponseWriter, r *http.Request, er
 	}
 	http.Error(w, "Authentication required", http.StatusUnauthorized)
 }
+
+func (a *AuthService) IsAuthenticated(r *http.Request) bool {
+	session, err := a.sessionStore.Get(r, "kindlepathy")
+	if err != nil {
+		return false
+	}
+
+	if auth, ok := session.Values["authenticated"].(bool); ok && auth {
+		return true
+	}
+
+	return false
+}
