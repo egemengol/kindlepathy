@@ -4,3 +4,4 @@ internal/db/generated
 .env
 main
 design.md
+**/.DS_Store

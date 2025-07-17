@@ -13,6 +13,10 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">
     <style>
       /* Page-specific styles for the landing page */
+      main {
+        max-width: 1200px; /* Wider than the default 800px */
+      }
+
       .landing-section {
         text-align: center;
         padding: 3rem 1rem;
@@ -39,10 +43,17 @@
       }
 
       .hero-image {
-        max-width: 100%;
+        max-width: 70%;
         height: auto;
         border-radius: 8px;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        margin-bottom: 0.8rem;
+      }
+
+      .hero .image-caption {
+        font-style: italic;
+        color: #666;
+        font-size: 1rem;
         margin-bottom: 2.5rem;
       }
 
@@ -83,6 +94,8 @@
         justify-content: center;
         gap: 2rem;
         flex-wrap: wrap;
+        max-width: 1000px;
+        margin: 0 auto;
       }
 
       .feature-item {
@@ -113,6 +126,8 @@
         justify-content: center;
         gap: 2rem;
         flex-wrap: wrap;
+        max-width: 1000px;
+        margin: 0 auto;
       }
 
       .step {
@@ -139,6 +154,74 @@
         line-height: 1.5;
       }
 
+      .step-link {
+        color: #333;
+        text-decoration: none;
+        font-weight: bold;
+      }
+
+      .step-link:hover {
+        text-decoration: underline;
+      }
+
+      .extension-section {
+        background: linear-gradient(135deg, #f8f8f8 0%, #f0f0f0 100%);
+        padding: 3rem 2rem;
+        border-radius: 12px;
+        margin: 2rem 0;
+        max-width: 800px;
+        margin-left: auto;
+        margin-right: auto;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      }
+
+      .extension-section h3 {
+        color: #333;
+        margin-bottom: 1rem;
+        font-size: 1.4rem;
+      }
+
+      .extension-section p {
+        color: #555;
+        margin-bottom: 2rem;
+        line-height: 1.6;
+        font-size: 1rem;
+      }
+
+      .extension-links {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+        flex-wrap: wrap;
+      }
+
+      .extension-link {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        padding: 1rem 1.8rem;
+        background-color: #444;
+        color: #fff;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      .extension-link:hover {
+        background-color: #333;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      }
+
+      .extension-icon {
+        width: 24px;
+        height: 24px;
+        filter: brightness(0) invert(1); /* Makes SVG white */
+      }
+
       .site-footer {
         text-align: center;
         padding: 2rem 1rem;
@@ -156,6 +239,13 @@
         }
         .section-title {
           font-size: 1.8rem;
+        }
+        .extension-links {
+          flex-direction: column;
+          align-items: center;
+        }
+        .extension-section {
+          padding: 2rem 1rem;
         }
       }
     </style>
@@ -175,6 +265,7 @@
         <h1>You've Got a Kindle. Why Are You Reading Articles on Your Phone?</h1>
         <p>Your Kindle is perfect for reading, but its browser is basically unusable. So you're stuck squinting at articles on your phone when you could be getting that beautiful e-ink experience. I fixed that.</p>
         <img src="/static/kindlepathy-screens.png" alt="Kindlepathy on a phone and a Kindle" class="hero-image">
+        <p class="image-caption">Your phone manages the library, your Kindle shows the perfectly formatted content</p>
         <a href="/signup" class="cta-button">Try It Free</a>
       </section>
       <section class="landing-section features">
@@ -199,18 +290,35 @@
         <div class="how-it-works-steps">
           <div class="step">
             <div class="step-number">1</div>
-            <p><strong>Sign up</strong>
-              for free on your phone or computer.</p>
+            <p><a href="/signup" class="step-link">Sign up for free</a>
+              at kindlepathy.com on your phone or computer.</p>
           </div>
           <div class="step">
             <div class="step-number">2</div>
-            <p><strong>Add any article</strong>
-              or series URL to your library.</p>
+            <p><strong>Paste any article URL</strong>
+              into your Kindlepathy library page.</p>
           </div>
           <div class="step">
             <div class="step-number">3</div>
-            <p><strong>Open one page</strong>
-              on your Kindle and read like a human.</p>
+            <p><strong>Go to kindlepathy.com/read</strong>
+              on your Kindle browser and read like a human.</p>
+          </div>
+        </div>
+      </section>
+      <section class="landing-section extension">
+        <h2 class="section-title">Bonus: Read Premium Content</h2>
+        <div class="extension-section">
+          <h3>Browser Extension for Paywalled Articles</h3>
+          <p>Want to read articles behind paywalls or authentication? The Kindlepathy browser extension lets you send content directly from your browser to your Kindle, even if it's not publicly accessible.</p>
+          <div class="extension-links">
+            <a href="https://chromewebstore.google.com/detail/kindlepathy-extractor/eclacjdfoacbmgoiongjpmlaangpmbac" target="_blank" class="extension-link">
+              <img src="/static/chrome.svg" alt="Chrome" class="extension-icon">
+              Get Chrome Extension
+            </a>
+            <a href="https://addons.mozilla.org/en-US/firefox/addon/kindlepathy-extractor/" target="_blank" class="extension-link">
+              <img src="/static/firefox.svg" alt="Firefox" class="extension-icon">
+              Get Firefox Extension
+            </a>
           </div>
         </div>
       </section>
