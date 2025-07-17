@@ -24,7 +24,9 @@ COPY internal ./internal
 COPY cmd ./cmd
 
 RUN sqlc generate
-RUN CGO_ENABLED=1 go build -o ./out ./cmd
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=1 go build -o ./out ./cmd
 
 # Stage 3: Final stage
 FROM alpine:latest
