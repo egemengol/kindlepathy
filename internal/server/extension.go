@@ -1,12 +1,12 @@
 package server
 
 import (
-	"database/sql"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
-	"github.com/egemengol/ereader/internal/readability"
+	"github.com/egemengol/kindlepathy/internal/core"
 	"github.com/gorilla/sessions"
 )
 
@@ -15,7 +15,7 @@ import (
 // handleExtensionCheckAuth is a CORS-enabled endpoint to check authentication status
 func handleExtensionCheckAuth(logger *slog.Logger, sessionStore *sessions.CookieStore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, err := sessionStore.Get(r, "read-elsewhere")
+		session, err := sessionStore.Get(r, "kindlepathy")
 		if err != nil {
 			logger.Error("Error getting session", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -34,97 +34,35 @@ func handleExtensionCheckAuth(logger *slog.Logger, sessionStore *sessions.Cookie
 }
 
 type ExtensionArticle struct {
-	Article readability.ReadabilityResponseSuccess `json:"article"`
-	URL     string                                 `json:"url"`
+	Article struct {
+		Title   string `json:"title"`
+		Content string `json:"content"`
+	} `json:"article"`
+	URL string `json:"url"`
 }
 
 // handleExtensionPostContent handles cleaned content submission from the extension
-func handleExtensionPostContent(logger *slog.Logger, db *sql.DB, sessionStore *sessions.CookieStore) http.Handler {
+func handleExtensionPostContent(logger *slog.Logger, c *core.Core, auth *AuthService) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Get user ID from session
-		userId, _, err := getUserId(r, db, sessionStore)
+		// Get user from context (populated by auth middleware)
+		authedUser, err := auth.GetAuthenticatedUser(r)
 		if err != nil {
-			logger.Error("Error getting user ID", "error", err)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			auth.HandleAuthError(w, r, err)
 			return
 		}
 
 		// Parse request body
-		// body, err := io.ReadAll(r.Body)
-		// if err != nil {
-		// 	logger.Error("Error reading request body", "error", err)
-		// 	http.Error(w, "Invalid request body", http.StatusBadRequest)
-		// 	return
-		// }
-		// logger.Info("Request body", "body", string(body))
-
 		var content ExtensionArticle
 		if err := json.NewDecoder(r.Body).Decode(&content); err != nil {
-			// if err := json.Unmarshal(body, &content); err != nil {
 			logger.Error("Error decoding request body", "error", err)
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		// Start a transaction
-		tx, err := db.BeginTx(r.Context(), nil)
+		// Add item with uploaded content
+		_, err = c.AddItemWithUploadedContent(r.Context(), authedUser.ID, content.Article.Title, content.URL, content.Article.Content, time.Now())
 		if err != nil {
-			logger.Error("Error starting transaction", "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		defer tx.Rollback()
-
-		// Insert or update the page in the pages table
-		var pageId int
-		err = tx.QueryRowContext(r.Context(), `
-            INSERT INTO pages (user_id, url)
-            VALUES (?, ?)
-            ON CONFLICT(user_id, url) DO UPDATE SET
-            accessed_at = CURRENT_TIMESTAMP
-            RETURNING id`, userId, content.URL).Scan(&pageId)
-		if err != nil {
-			logger.Error("Error inserting or updating page", "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		// Set this page as the active page for the user
-		_, err = tx.ExecContext(r.Context(), `
-            INSERT INTO user_active_page (user_id, page_id)
-            VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET page_id = excluded.page_id`,
-			userId, pageId)
-		if err != nil {
-			logger.Error("Error updating active page", "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		// Convert content to JSON for storage in page_cache
-		contentJSON, err := json.Marshal(content.Article)
-		if err != nil {
-			logger.Error("Error marshaling content", "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		// Insert or update the page_cache table
-		_, err = tx.ExecContext(r.Context(), `
-            INSERT INTO page_cache (url, readability_output)
-            VALUES (?, ?)
-            ON CONFLICT(url) DO UPDATE SET
-            readability_output = excluded.readability_output,
-            accessed_at = CURRENT_TIMESTAMP`, content.URL, string(contentJSON))
-		if err != nil {
-			logger.Error("Error storing content", "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		// Commit the transaction
-		if err = tx.Commit(); err != nil {
-			logger.Error("Error committing transaction", "error", err)
+			logger.Error("Error adding item with uploaded content", "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}

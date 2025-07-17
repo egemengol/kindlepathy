@@ -189,6 +189,48 @@
             max-width: 100%;
             height: auto;
         }
+
+        /* Navigation styles */
+        .nav-buttons {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 2rem 0;
+            padding: 1rem 0;
+            border-top: 1px solid #ddd;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .nav-buttons:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .nav-button {
+            background: none;
+            border: 1px solid #666;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            border-radius: 4px;
+            color: #333;
+            font-size: 0.9rem;
+            text-decoration: none;
+            display: inline-block;
+            transition: background-color 0.2s;
+        }
+
+        .nav-button:hover {
+            background-color: #eee;
+        }
+
+        .nav-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .nav-spacer {
+            flex: 1;
+        }
     </style>
   </head>
   <body>
@@ -208,7 +250,53 @@
     </div>
     <div class="content">
       <h1>{{.Title}}</h1>
+      {{if or .NavPrev .NavNext}}
+      <!-- Navigation buttons at the beginning -->
+      <div class="nav-buttons">
+        {{if .NavPrev}}
+        <form method="post" action="" style="display: inline;">
+          <input type="hidden" name="target" value="{{.NavPrev}}">
+          <input type="hidden" name="item_id" value="{{.ItemID}}">
+          <button type="submit" class="nav-button">← Previous</button>
+        </form>
+        {{else}}
+        <span class="nav-spacer"></span>
+        {{end}}
+        {{if .NavNext}}
+        <form method="post" action="" style="display: inline;">
+          <input type="hidden" name="target" value="{{.NavNext}}">
+          <input type="hidden" name="item_id" value="{{.ItemID}}">
+          <button type="submit" class="nav-button">Next →</button>
+        </form>
+        {{else}}
+        <span class="nav-spacer"></span>
+        {{end}}
+      </div>
+      {{end}}
       {{.Content}}
+      {{if or .NavPrev .NavNext}}
+      <!-- Navigation buttons at the end -->
+      <div class="nav-buttons">
+        {{if .NavPrev}}
+        <form method="post" action="" style="display: inline;">
+          <input type="hidden" name="target" value="{{.NavPrev}}">
+          <input type="hidden" name="item_id" value="{{.ItemID}}">
+          <button type="submit" class="nav-button">← Previous</button>
+        </form>
+        {{else}}
+        <span class="nav-spacer"></span>
+        {{end}}
+        {{if .NavNext}}
+        <form method="post" action="" style="display: inline;">
+          <input type="hidden" name="target" value="{{.NavNext}}">
+          <input type="hidden" name="item_id" value="{{.ItemID}}">
+          <button type="submit" class="nav-button">Next →</button>
+        </form>
+        {{else}}
+        <span class="nav-spacer"></span>
+        {{end}}
+      </div>
+      {{end}}
     </div>
     <script>
       // Add class to body when JS is available
@@ -217,7 +305,7 @@
       function adjustFontSize(delta) {
         const root = document.documentElement;
         const currentSize = parseFloat(getComputedStyle(root).getPropertyValue('--font-size'));
-        const newSize = Math.max(0.8, Math.min(2.0, currentSize + delta));
+        const newSize = Math.round(Math.max(0.8, Math.min(2.0, currentSize + delta)) * 100) / 100;
         root.style.setProperty('--font-size', `${newSize}rem`);
 
         // Save to localStorage

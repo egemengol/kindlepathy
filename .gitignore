@@ -1,7 +1,6 @@
-scratch
+data
+mise.toml
+internal/db/generated
 .env
-.envrc
-files
-db.sqlite
-mount
-**/.DS_Store
+main
+design.md

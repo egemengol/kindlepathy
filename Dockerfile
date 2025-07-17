@@ -9,13 +9,22 @@ COPY readability/server.ts ./
 RUN bun build --compile --minify --sourcemap server.ts --outfile readability
 
 # Stage 2: Build Go binary
-FROM golang:1.24 AS go_builder
+FROM golang:1.24-alpine AS go_builder
 WORKDIR /app
+
+# Install build dependencies for CGO
+RUN apk add --no-cache gcc musl-dev
+RUN go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0
+
 COPY go.mod go.sum ./
 RUN go mod download
+
+COPY sqlc.yml ./
 COPY internal ./internal
 COPY cmd ./cmd
-RUN CGO_ENABLED=0 go build -o ./out ./cmd
+
+RUN sqlc generate
+RUN CGO_ENABLED=1 go build -o ./out ./cmd
 
 # Stage 3: Final stage
 FROM alpine:latest
@@ -28,7 +37,7 @@ COPY --from=readability_builder /app/readability ./readability
 COPY --from=readability_builder /app/node_modules/jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js ./node_modules/jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js
 COPY --from=go_builder /app/out ./server
 
-COPY migrations ./migrations
+# COPY migrations ./migrations
 COPY web ./web
 
 ENV READABILITY_PATH=/app/readability

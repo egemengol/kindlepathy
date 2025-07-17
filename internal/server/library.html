@@ -1,0 +1,128 @@
+{{define "library"}}
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Kindlepathy - Library</title>
+    <script src="/static/htmx.min.js"></script>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/icon-16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
+    <link rel="icon" type="image/png" sizes="128x128" href="/static/icon-128.png">
+    <link rel="icon" type="image/png" sizes="256x256" href="/static/icon-256.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">\
+  </head>
+  <body>
+    <header>
+      <div class="header-content">
+        <h1>Kindlepathy</h1>
+        <div class="user-info">
+          <a href="/read" target="_blank" class="header-link reader-link">Open Reader</a>
+          <a href="/logout" class="header-link">Logout</a>
+        </div>
+      </div>
+    </header>
+    <main>
+      <form
+        id="form-new-article"
+        method="post"
+        action="/library"
+      >
+        <input
+          type="text"
+          id="url"
+          name="url"
+          placeholder="Article URL"
+          value=""
+          autocomplete="off"
+        >
+        <button type="submit">Add Article</button>
+      </form>
+      <div id="items">
+        {{range .Items}}
+          {{template "library-item" .}}
+        {{end}}
+      </div>
+    </main>
+    <div id="copied-message" class="copied-message">Copied to clipboard</div>
+    <script>
+      document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('copy-btn')) {
+          e.preventDefault();
+          const url = e.target.closest('.url-actions').dataset.url;
+          navigator.clipboard.writeText(url).then(() => {
+            const message = document.getElementById('copied-message');
+            message.classList.add('visible');
+            setTimeout(() => message.classList.remove('visible'), 2000);
+          });
+        }
+      });
+
+      // Handle form submission to disable elements
+      document.getElementById('form-new-article').addEventListener('submit', function(e) {
+        const submitButton = e.target.querySelector('button[type="submit"]');
+
+        // Disable the input and button
+        submitButton.disabled = true;
+
+        // Change button text to show loading state
+        const originalText = submitButton.textContent;
+        submitButton.textContent = 'Submitting'
+
+        // Re-enable elements after a delay (in case of redirect failure)
+        setTimeout(() => {
+          submitButton.disabled = false;
+          submitButton.textContent = originalText;
+        }, 5000);
+      });
+
+      document.body.addEventListener('htmx:beforeSwap', function(evt) {
+          if (evt.detail.xhr.getResponseHeader('HX-Trigger') === 'activeitemChanged') {
+              document.querySelectorAll('input[name="active_item"]').forEach(radio => {
+                  radio.checked = false;
+              });
+          }
+      });
+
+      document.body.addEventListener('htmx:afterOnLoad', function(evt) {
+          if (evt.detail.xhr.getResponseHeader('HX-Trigger') === 'activeitemDeleted') {
+              htmx.ajax('GET', '/library/items', {target: 'items', swap: 'innerHTML'});
+          }
+      });
+    </script>
+  </body>
+</html>
+{{end}}
+
+{{define "library-item"}}
+<div class="item library-item" id="item-{{.ID}}">
+  <div class="item-label">
+    <label>
+      <input
+        type="radio"
+        name="active_item"
+        value="{{.ID}}"
+        {{if
+        .IsActive}}checked{{end}}
+        hx-patch="/library/{{.ID}}"
+        hx-trigger="change"
+        id="radio-{{.ID}}"
+      >
+      <span class="custom-radio"></span>
+    </label>
+    <a class="title" href="/read/{{.ID}}">{{.Title}}</a>
+  </div>
+  <div class="item-actions">
+    <div class="url-actions" data-url="{{.URL}}">
+      <img src="/static/link.svg" class="chain-icon" alt="URL options">
+      <div class="url-options">
+        <button class="copy-btn">Copy URL</button>
+        <a href="{{.URL}}" target="_blank" class="open-link">Open in new tab</a>
+      </div>
+    </div>
+    <button class="delete-btn" hx-delete="/library/{{.ID}}" hx-target="#item-{{.ID}}" hx-swap="delete">
+      <img src="/static/trash.svg" class="trash-icon" alt="Delete">
+    </button>
+  </div>
+</div>
+{{end}}

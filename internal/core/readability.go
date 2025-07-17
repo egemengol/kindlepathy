@@ -1,4 +1,4 @@
-package readability
+package core
 
 import (
 	"context"

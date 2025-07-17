@@ -2,12 +2,13 @@ services:
   server:
     build: .
     volumes:
-      - ./mount:/app/mount
-      - ./db.sqlite:/app/db.sqlite
-    environment:
-      - SESSION_SECRET=super-secret-key
-      - DB_PATH=/app/mount/db.sqlite
-      # - READABILITY_PATH=/app/readability
+      - ./data:/app/data
+    # environment:
+    # - SESSION_SECRET=super-secret-secretive-awesome-holymoly
+    # - DB_PATH=/app/data/db.sqlite3
+    # - PORT=8080
+    # - READABILITY_PATH=/app/readability
+    # - CACHE_PATH=/app/data/cache
     env_file: .env
     ports:
       - "8080:8080"

@@ -1,19 +1,28 @@
 package server
 
 import (
+	"context"
 	"database/sql"
-	"encoding/json"
+	_ "embed"
+	"errors"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"strconv"
+	"time"
 
-	"github.com/egemengol/ereader/internal/readability"
+	"github.com/egemengol/kindlepathy/internal/core"
+	db "github.com/egemengol/kindlepathy/internal/db/generated"
 	"github.com/gorilla/sessions"
 	"golang.org/x/crypto/bcrypt"
 )
 
-func NewServer(logger *slog.Logger, readability *readability.ReadabilityClient, db *sql.DB, httpClient *http.Client, sessionStoreSecret []byte) http.Handler {
+//go:embed read.html
+var TEMPLATE_READ string
+
+func NewServer(core *core.Core, logger *slog.Logger, queries *db.Queries, sessionStoreSecret []byte) http.Handler {
 	sessionStore := sessions.NewCookieStore(sessionStoreSecret)
 	sessionStore.Options = &sessions.Options{
 		Path:     "/",
@@ -23,33 +32,284 @@ func NewServer(logger *slog.Logger, readability *readability.ReadabilityClient, 
 
 	mux := http.NewServeMux()
 
-	fs := http.FileServer(http.Dir("web/static"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs))
-
-	addRoutes(mux, logger, readability, db, httpClient, sessionStore)
+	addRoutes(mux, core, logger, queries, sessionStore)
 
 	return mux
 }
 
-func checkPassword(providedPassword, hashedPassword string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(providedPassword))
-	return err == nil
+func addRoutes(mux *http.ServeMux, c *core.Core, logger *slog.Logger, queries *db.Queries, sessionStore *sessions.CookieStore) {
+	fs := http.FileServer(http.Dir("web/static"))
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+
+	auth := NewAuthService(queries, sessionStore)
+
+	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join("web", "login.html"))
+	})
+	mux.Handle("POST /login", handleLoginPost(logger, queries, sessionStore))
+
+	mux.HandleFunc("GET /signup", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join("web", "signup.html"))
+	})
+	mux.Handle("POST /signup", handleSignupPost(logger, queries))
+	mux.Handle("/logout", handleLogout(sessionStore))
+
+	mux.HandleFunc("/privacy", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join("web", "privacy.html"))
+	})
+
+	authMiddleware := newAuthMiddleware(sessionStore, queries)
+
+	mux.Handle("DELETE /library/{id}", authMiddleware(handleLibraryItemDelete(c, auth, logger)))
+	mux.Handle("PATCH /library/{id}", authMiddleware(handleLibraryItemPatch(auth, logger)))
+	mux.Handle("GET /library", authMiddleware(handleLibraryGet(c, auth, logger)))
+	mux.Handle("POST /library", authMiddleware(handleLibraryPost(c, auth, logger)))
+
+	corsMiddleware := newExtensionCORSMiddleware(logger)
+	mux.Handle("GET /ext/check-auth", corsMiddleware(handleExtensionCheckAuth(logger, sessionStore)))
+	mux.Handle("POST /ext/article", corsMiddleware(authMiddleware(handleExtensionPostContent(logger, c, auth))))
+
+	/////////////
+
+	mux.Handle("GET /read/{id}", authMiddleware(handleRead(c, auth, logger)))
+	mux.Handle("GET /read", authMiddleware(handleReadActive(c, auth, logger)))
+	mux.Handle("POST /read/{id}", authMiddleware(handleReadNav(c, auth, logger)))
+	mux.Handle("POST /read", authMiddleware(handleReadNavActive(c, auth, logger)))
 }
 
-func handleLoginPost(logger *slog.Logger, db *sql.DB, sessionStore *sessions.CookieStore) http.Handler {
+func handleReadActive(c *core.Core, auth *AuthService, logger *slog.Logger) http.Handler {
+	tmpl := template.Must(template.New("read").Parse(TEMPLATE_READ))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+
+		authedUser, err := auth.GetAuthenticatedUser(r)
+		if err != nil {
+			auth.HandleAuthError(w, r, err)
+			return
+		}
+
+		if authedUser.ActiveItemID == nil {
+			http.Error(w, "No active item", http.StatusNotFound)
+			return
+		}
+
+		activeItemID := *authedUser.ActiveItemID
+
+		// Check ownership
+		if err := auth.RequireOwnership(r.Context(), authedUser.Username, activeItemID); err != nil {
+			auth.HandleAuthError(w, r, err)
+			return
+		}
+
+		itemScs, err := c.ReadItem(r.Context(), activeItemID, time.Now())
+		if err != nil {
+			logger.Error("Error reading item", "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		data := struct {
+			Title   string
+			Content template.HTML
+			NavNext string
+			NavPrev string
+			ItemID  int64
+		}{
+			Title:   itemScs.Title,
+			Content: template.HTML(itemScs.ContentHTML),
+			NavNext: core.RelativizeURL(itemScs.NavNext),
+			NavPrev: core.RelativizeURL(itemScs.NavPrev),
+			ItemID:  activeItemID,
+		}
+
+		if err := tmpl.Execute(w, data); err != nil {
+			logger.Error("Error executing template", "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+	})
+}
+
+func handleRead(c *core.Core, auth *AuthService, logger *slog.Logger) http.Handler {
+	tmpl := template.Must(template.New("read").Parse(TEMPLATE_READ))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+
+		itemID := r.PathValue("id")
+		itemIDInt, err := strconv.ParseInt(itemID, 10, 64)
+		if err != nil {
+			logger.Error("Error converting ID to int", "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		authedUser, err := auth.GetAuthenticatedUser(r)
+		if err != nil {
+			auth.HandleAuthError(w, r, err)
+			return
+		}
+
+		if err := auth.RequireOwnership(r.Context(), authedUser.Username, itemIDInt); err != nil {
+			auth.HandleAuthError(w, r, err)
+			return
+		}
+
+		itemScs, err := c.ReadItem(r.Context(), itemIDInt, time.Now())
+		if err != nil {
+			logger.Error("Error reading item", "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		data := struct {
+			Title   string
+			Content template.HTML
+			NavNext string
+			NavPrev string
+			ItemID  int64
+		}{
+			Title:   itemScs.Title,
+			Content: template.HTML(itemScs.ContentHTML),
+			NavNext: core.RelativizeURL(itemScs.NavNext),
+			NavPrev: core.RelativizeURL(itemScs.NavPrev),
+			ItemID:  itemIDInt,
+		}
+
+		if err := tmpl.Execute(w, data); err != nil {
+			logger.Error("Error executing template", "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+	})
+}
+
+func navigateItemShared(ctx context.Context, c *core.Core, queries *db.Queries, itemID int64, targetPath string) error {
+	if targetPath != "" && (len(targetPath) == 0 || targetPath[0] != '/') {
+		return fmt.Errorf("invalid target path: %s", targetPath)
+	}
+
+	c.NavigateItem(ctx, itemID, targetPath)
+	return nil
+}
+
+func handleReadNavActive(c *core.Core, auth *AuthService, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authedUser, err := auth.GetAuthenticatedUser(r)
+		if err != nil {
+			auth.HandleAuthError(w, r, err)
+			return
+		}
+
+		if err := r.ParseForm(); err != nil {
+			logger.Error("Error parsing form", "error", err)
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+
+		itemIDStr := r.FormValue("item_id")
+		itemID, err := strconv.ParseInt(itemIDStr, 10, 64)
+		if err != nil {
+			logger.Error("Error converting item ID to int", "error", err)
+			http.Error(w, "Invalid item ID", http.StatusBadRequest)
+			return
+		}
+
+		// Check ownership
+		if err := auth.RequireOwnership(r.Context(), authedUser.Username, itemID); err != nil {
+			auth.HandleAuthError(w, r, err)
+			return
+		}
+
+		// Set active item
+		err = auth.queries.UsersSetActiveItem(r.Context(), db.UsersSetActiveItemParams{
+			ActiveItemID: itemID,
+			ID:           authedUser.ID,
+		})
+		if err != nil {
+			logger.Error("Error setting active item", "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		targetPath := r.FormValue("target")
+		if err := navigateItemShared(r.Context(), c, auth.queries, itemID, targetPath); err != nil {
+			logger.Error("Error navigating item", "error", err)
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+
+		http.Redirect(w, r, "/read", http.StatusSeeOther)
+	})
+}
+
+func handleReadNav(c *core.Core, auth *AuthService, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authedUser, err := auth.GetAuthenticatedUser(r)
+		if err != nil {
+			auth.HandleAuthError(w, r, err)
+			return
+		}
+
+		itemID := r.PathValue("id")
+		itemIDInt, err := strconv.ParseInt(itemID, 10, 64)
+		if err != nil {
+			logger.Error("Error converting item ID to int", "error", err)
+			http.Error(w, "Invalid item ID", http.StatusBadRequest)
+			return
+		}
+
+		if err := auth.RequireOwnership(r.Context(), authedUser.Username, itemIDInt); err != nil {
+			auth.HandleAuthError(w, r, err)
+			return
+		}
+
+		if err := r.ParseForm(); err != nil {
+			logger.Error("Error parsing form", "error", err)
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		targetPath := r.FormValue("target")
+		if err := navigateItemShared(r.Context(), c, auth.queries, itemIDInt, targetPath); err != nil {
+			logger.Error("Error navigating item", "error", err)
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+
+		http.Redirect(w, r, "/read/"+itemID, http.StatusSeeOther)
+	})
+}
+
+func handleLoginPost(logger *slog.Logger, queries *db.Queries, sessionStore *sessions.CookieStore) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			username := r.FormValue("username")
-			password := r.FormValue("password")
+			providedPassword := r.FormValue("password")
 
-			var hashedPassword string
-			err := db.QueryRow("SELECT password FROM users WHERE username = ?", username).Scan(&hashedPassword)
-			if err != nil || !checkPassword(password, hashedPassword) {
+			hashedPassword, err := queries.UsersGetPassword(r.Context(), username)
+			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+					return
+				}
+				logger.Error("Failed to get password", "username", username, "error", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
+			}
+			err = bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(providedPassword))
+			if err != nil {
 				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 				return
 			}
 
-			session, err := sessionStore.Get(r, "read-elsewhere")
+			session, err := sessionStore.Get(r, "kindlepathy")
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -64,7 +324,7 @@ func handleLoginPost(logger *slog.Logger, db *sql.DB, sessionStore *sessions.Coo
 	)
 }
 
-func handleSignupPost(logger *slog.Logger, db *sql.DB) http.Handler {
+func handleSignupPost(logger *slog.Logger, queries *db.Queries) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			username := r.FormValue("username")
@@ -81,16 +341,14 @@ func handleSignupPost(logger *slog.Logger, db *sql.DB) http.Handler {
 				return
 			}
 
-			var exists bool
-			err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)", username).Scan(&exists)
-			if err != nil {
-				logger.Error("Database error checking username", "error", err)
-				http.Error(w, "Internal server error", http.StatusInternalServerError)
+			_, err := queries.UsersGetByName(r.Context(), username)
+			if err == nil {
+				http.Error(w, "Username already exists", http.StatusConflict)
 				return
 			}
-
-			if exists {
-				http.Error(w, "Username already exists", http.StatusConflict)
+			if err != sql.ErrNoRows {
+				logger.Error("Database error checking username", "error", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
 				return
 			}
 
@@ -101,7 +359,7 @@ func handleSignupPost(logger *slog.Logger, db *sql.DB) http.Handler {
 				return
 			}
 
-			_, err = db.Exec("INSERT INTO users (username, password) VALUES (?, ?)", username, hashedPassword)
+			_, err = queries.UsersAdd(r.Context(), db.UsersAddParams{Username: username, Password: string(hashedPassword)})
 			if err != nil {
 				logger.Error("Error creating user", "error", err)
 				http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -113,85 +371,9 @@ func handleSignupPost(logger *slog.Logger, db *sql.DB) http.Handler {
 	)
 }
 
-func handleRead(logger *slog.Logger, db *sql.DB, sessionStore *sessions.CookieStore) http.Handler {
-	tmpl := template.Must(template.ParseFiles(filepath.Join("web", "read.html")))
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate") // Prevent caching
-		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("Expires", "0")
-
-		session, err := sessionStore.Get(r, "read-elsewhere")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		username, ok := session.Values["username"].(string)
-		if !ok {
-			http.Error(w, "User not found in session", http.StatusInternalServerError)
-			return
-		}
-
-		// Get user's active URL
-		var userId int
-		err = db.QueryRow("SELECT id FROM users WHERE username = ?", username).Scan(&userId)
-		if err != nil {
-			logger.Error("Error getting user ID", "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		var activeURL string
-		err = db.QueryRow(`
-		    SELECT p.url
-		    FROM user_active_page uap
-		    JOIN pages p ON p.id = uap.page_id
-		    WHERE uap.user_id = ?`, userId).Scan(&activeURL)
-		if err != nil {
-			logger.Error("Error getting active URL", "error", err)
-			http.Error(w, "No active page", http.StatusNotFound)
-			return
-		}
-
-		// Get cached readability output
-		var readabilityJSON string
-		err = db.QueryRow("SELECT readability_output FROM page_cache WHERE url = ?", activeURL).Scan(&readabilityJSON)
-		if err != nil {
-			logger.Error("Error getting cached content", "error", err)
-			http.Error(w, "Content not found", http.StatusNotFound)
-			return
-		}
-
-		var readabilityResponse readability.ReadabilityResponseSuccess
-		if err := json.Unmarshal([]byte(readabilityJSON), &readabilityResponse); err != nil {
-			logger.Error("Error unmarshaling readability output", "error", err)
-			http.Error(w, "Invalid content format", http.StatusInternalServerError)
-			return
-		}
-
-		data := struct {
-			Title   string
-			Content template.HTML
-			Excerpt string
-		}{
-			Title:   readabilityResponse.Title,
-			Content: template.HTML(readabilityResponse.Content),
-			Excerpt: readabilityResponse.Excerpt,
-		}
-
-		if err := tmpl.Execute(w, data); err != nil {
-			logger.Error("Error executing template", "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-	})
-}
-
 func handleLogout(sessionStore *sessions.CookieStore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, err := sessionStore.Get(r, "session-name")
+		session, err := sessionStore.Get(r, "kindlepathy")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -213,212 +395,10 @@ func handleLogout(sessionStore *sessions.CookieStore) http.Handler {
 	})
 }
 
-// func handleLibraryGet(logger *slog.Logger, db *sql.DB, sessionStore *sessions.CookieStore) http.Handler {
-// 	tmpl := template.Must(template.ParseFiles(filepath.Join("web", "library.html")))
-
-// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		session, err := sessionStore.Get(r, "session-name")
-// 		if err != nil {
-// 			http.Error(w, err.Error(), http.StatusInternalServerError)
-// 			return
-// 		}
-
-// 		username, ok := session.Values["username"].(string)
-// 		if !ok {
-// 			http.Error(w, "User not found in session", http.StatusInternalServerError)
-// 			return
-// 		}
-
-// 		// Get user ID
-// 		var userId int
-// 		err = db.QueryRow("SELECT id FROM users WHERE username = ?", username).Scan(&userId)
-// 		if err != nil {
-// 			logger.Error("Error getting user ID", "error", err)
-// 			http.Error(w, "Internal server error", http.StatusInternalServerError)
-// 			return
-// 		}
-
-// 		// Get active URL if exists
-// 		var activeURL string
-// 		err = db.QueryRow("SELECT url FROM user_active_page WHERE user_id = ?", userId).Scan(&activeURL)
-// 		if err != nil && err != sql.ErrNoRows {
-// 			logger.Error("Error getting active URL", "error", err)
-// 			http.Error(w, "Internal server error", http.StatusInternalServerError)
-// 			return
-// 		}
-
-// 		data := struct {
-// 			Username  string
-// 			ActiveURL string
-// 		}{
-// 			Username:  username,
-// 			ActiveURL: activeURL,
-// 		}
-
-// 		if err := tmpl.Execute(w, data); err != nil {
-// 			logger.Error("Error executing template", "error", err)
-// 			http.Error(w, "Internal server error", http.StatusInternalServerError)
-// 			return
-// 		}
-// 	})
-// }
-
-// func handleLibraryPost(logger *slog.Logger, db *sql.DB, sessionStore *sessions.CookieStore, browser browser.Scraper, readability *readability.Readability) http.Handler {
-// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		session, err := sessionStore.Get(r, "session-name")
-// 		if err != nil {
-// 			http.Error(w, err.Error(), http.StatusInternalServerError)
-// 			return
-// 		}
-
-// 		username, ok := session.Values["username"].(string)
-// 		if !ok {
-// 			http.Error(w, "User not found in session", http.StatusInternalServerError)
-// 			return
-// 		}
-
-// 		var userId int
-// 		err = db.QueryRowContext(r.Context(), "SELECT id FROM users WHERE username = ?", username).Scan(&userId)
-// 		if err != nil {
-// 			logger.Error("Error getting user ID", "error", err)
-// 			http.Error(w, "Internal server error", http.StatusInternalServerError)
-// 			return
-// 		}
-
-// 		url := r.FormValue("url")
-// 		if url == "" {
-// 			http.Error(w, "URL is required", http.StatusBadRequest)
-// 			return
-// 		}
-
-// 		tx, err := db.BeginTx(r.Context(), nil)
-//         if err != nil {
-//             logger.Error("Error starting transaction", "error", err)
-//             http.Error(w, "Internal server error", http.StatusInternalServerError)
-//             return
-//         }
-//         defer tx.Rollback()
-
-//         // Insert or get existing page
-//         var pageId int
-//         err = tx.QueryRowContext(r.Context(), `
-//             INSERT INTO pages (user_id, url)
-//             VALUES (?, ?)
-//             ON CONFLICT (user_id, url)
-//             DO UPDATE SET accessed_at = CURRENT_TIMESTAMP
-//             RETURNING id`, userId, url).Scan(&pageId)
-//         if err != nil {
-//             logger.Error("Error inserting page", "error", err)
-//             http.Error(w, "Internal server error", http.StatusInternalServerError)
-//             return
-//         }
-
-//         // Update active page
-//         _, err = tx.ExecContext(r.Context(), `
-//             INSERT INTO user_active_page (user_id, page_id)
-//             VALUES (?, ?)
-//             ON CONFLICT(user_id) DO UPDATE SET page_id = excluded.page_id`,
-//             userId, pageId)
-//         if err != nil {
-//             logger.Error("Error updating active page", "error", err)
-//             http.Error(w, "Internal server error", http.StatusInternalServerError)
-//             return
-//         }
-
-//         if err = tx.Commit(); err != nil {
-//             logger.Error("Error committing transaction", "error", err)
-//             http.Error(w, "Internal server error", http.StatusInternalServerError)
-//             return
-//         }
-
-//         // Process URL in background
-//         go func() {
-//             ctx := context.Background()
-//             if err := ProcessURL(ctx, url, browser, readability, db, logger); err != nil {
-//                 logger.Error("failed to process URL", "error", err, "url", url)
-//             }
-//         }()
-
-//         http.Redirect(w, r, "/library", http.StatusSeeOther)
-// 	})
-// }
-
-func addRoutes(mux *http.ServeMux, logger *slog.Logger, readability *readability.ReadabilityClient, db *sql.DB, httpClient *http.Client, sessionStore *sessions.CookieStore) {
-	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join("web", "login.html"))
-	})
-	mux.Handle("POST /login", handleLoginPost(logger, db, sessionStore))
-
-	mux.HandleFunc("GET /signup", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join("web", "signup.html"))
-	})
-	mux.Handle("POST /signup", handleSignupPost(logger, db))
-	mux.Handle("/logout", handleLogout(sessionStore))
-
-	mux.HandleFunc("/privacy", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join("web", "privacy.html"))
-	})
-
-	authMiddleware := newAuthMiddleware(logger, db, sessionStore)
-
-	mux.Handle("GET /read", authMiddleware(handleRead(logger, db, sessionStore)))
-
-	// mux.Handle("GET /library", authMiddleware(handleLibraryGet(logger, db, sessionStore)))
-	// mux.Handle("POST /library", authMiddleware(handleLibraryPost(logger, db, sessionStore, browser, readability)))
-
-	mux.Handle("GET /library/pages", authMiddleware(handleLibraryPagesGet(logger, db, sessionStore)))
-	mux.Handle("DELETE /library/{id}", authMiddleware(handleLibraryItemDelete(logger, db, sessionStore)))
-	mux.Handle("PATCH /library/{id}", authMiddleware(handleLibraryItemPatch(logger, db, sessionStore)))
-	mux.Handle("GET /library", authMiddleware(handleLibraryGet(logger, db, sessionStore)))
-	mux.Handle("POST /library", authMiddleware(handleLibraryPost(logger, db, sessionStore, httpClient, readability)))
-
-	corsMiddleware := newExtensionCORSMiddleware(logger)
-	mux.Handle("GET /ext/check-auth", corsMiddleware(handleExtensionCheckAuth(logger, sessionStore)))
-	mux.Handle("POST /ext/article", corsMiddleware(handleExtensionPostContent(logger, db, sessionStore)))
-
-	// Default 404 handler
-	mux.Handle("/", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/library", http.StatusSeeOther)
-	})))
-}
-
-func handleCheckAuth(logger *slog.Logger, sessionStore *sessions.CookieStore) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.Info("auth middleware invoked")
-
-		session, err := sessionStore.Get(r, "read-elsewhere")
-		if err != nil {
-			logger.Error("Error getting session", "error", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// Check if the user is authenticated
-		auth, ok := session.Values["authenticated"].(bool)
-		if !ok || !auth {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-
-		// Log the username
-		// username, ok := session.Values["username"].(string)
-		// if !ok {
-		// 	logger.Error("Username not found in session")
-		// 	w.WriteHeader(http.StatusUnauthorized)
-		// 	return
-		// }
-
-		// logger.Info("User authenticated", "username", username)
-
-		w.WriteHeader(http.StatusOK)
-	})
-}
-
-// newAuthMiddleware creates the auth checking middleware
-func newAuthMiddleware(logger *slog.Logger, db *sql.DB, sessionStore *sessions.CookieStore) func(h http.Handler) http.Handler {
+func newAuthMiddleware(sessionStore *sessions.CookieStore, queries *db.Queries) func(h http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			session, err := sessionStore.Get(r, "read-elsewhere")
+			session, err := sessionStore.Get(r, "kindlepathy")
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -429,7 +409,34 @@ func newAuthMiddleware(logger *slog.Logger, db *sql.DB, sessionStore *sessions.C
 				return
 			}
 
-			next.ServeHTTP(w, r)
+			username, ok := session.Values["username"].(string)
+			if !ok {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+
+			user, err := queries.UsersGetByName(r.Context(), username)
+			if err != nil {
+				// If user in session doesn't exist in DB, treat as logged out.
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+
+			var activeItemID *int64
+			if user.ActiveItemID != nil {
+				if id, ok := user.ActiveItemID.(int64); ok {
+					activeItemID = &id
+				}
+			}
+
+			authedUser := AuthenticatedUser{
+				ID:           user.ID,
+				Username:     user.Username,
+				ActiveItemID: activeItemID,
+			}
+
+			ctx := context.WithValue(r.Context(), userContextKey, authedUser)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
